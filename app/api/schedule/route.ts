@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { bothOutsideTop150, matchupQualityIndex, normalizeTeamName, ratingLabel, type TeamRating } from '@/lib/team-quality';
+
+const NCAA_DATA = 'https://ncaa-api.henrygd.me/rankings/basketball-men/d1/ncaa-mens-basketball-net-rankings';
+const KENPOM_API = 'https://kenpom.com/api.php';
 
 type EspnCompetitor = {
   homeAway: 'home' | 'away';
@@ -115,6 +119,44 @@ const winPct = (summary: string) => {
 };
 const pairKey = (a: string, b: string) => [a.toLowerCase(), b.toLowerCase()].sort().join('|');
 
+async function loadNetRatings() {
+  const ratings = new Map<string, TeamRating>();
+  try {
+    const response = await fetch(NCAA_DATA, { next: { revalidate: 900 }, headers: { Accept: 'application/json' } });
+    if (!response.ok) return ratings;
+    const payload: any = await response.json();
+    for (const row of Array.isArray(payload.data) ? payload.data : []) {
+      const rank = Number(row.Rank);
+      if (row.School && Number.isFinite(rank)) ratings.set(normalizeTeamName(row.School), { netRank: rank });
+    }
+  } catch {}
+  return ratings;
+}
+
+async function loadKenPomRatings(date: string) {
+  const ratings = new Map<string, number>();
+  const apiKey = process.env.KENPOM_API_KEY;
+  if (!apiKey) return ratings;
+
+  try {
+    const month = Number(date.slice(5, 7));
+    const calendarYear = Number(date.slice(0, 4));
+    const season = month >= 7 ? calendarYear + 1 : calendarYear;
+    const response = await fetch(`${KENPOM_API}?endpoint=ratings&y=${season}`, {
+      next: { revalidate: 21600 },
+      headers: { Accept: 'application/json', Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) return ratings;
+    const payload: any = await response.json();
+    const rows = Array.isArray(payload) ? payload : Array.isArray(payload.data) ? payload.data : [];
+    for (const row of rows) {
+      const rank = Number(row.RankAdjEM);
+      if (row.TeamName && Number.isFinite(rank)) ratings.set(normalizeTeamName(row.TeamName), rank);
+    }
+  } catch {}
+  return ratings;
+}
+
 export async function GET(request: NextRequest) {
   const date = request.nextUrl.searchParams.get('date') ?? '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -128,6 +170,12 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error(`ESPN returned ${response.status}`);
     const payload: any = await response.json();
+    const [netRatings, kenPomRatings] = await Promise.all([loadNetRatings(), loadKenPomRatings(date)]);
+
+    const teamRating = (name: string): TeamRating => {
+      const key = normalizeTeamName(name);
+      return { ...netRatings.get(key), kenPomRank: kenPomRatings.get(key) };
+    };
 
     const games = (payload.events ?? []).map((event: any) => {
       const competition = event.competitions?.[0] ?? {};
@@ -160,9 +208,18 @@ export async function GET(request: NextRequest) {
       const spread = spreadMatch ? Math.abs(Number(spreadMatch[1])) : undefined;
       const rivalry = rivalryBonuses[pairKey(home.team.shortDisplayName, away.team.shortDisplayName)] ?? 0;
       const eventNote = competition.notes?.[0]?.headline ?? '';
-      const highStakesEvent = /championship|semifinal|quarterfinal|title game|ncaa tournament|conference tournament/i.test(eventNote);
+      const eventStakes = /ncaa tournament|conference tournament|conference championship|national championship|title game/i.test(eventNote)
+        ? 6
+        : /championship/i.test(eventNote)
+          ? 3
+          : /semifinal|quarterfinal/i.test(eventNote)
+            ? 2
+            : 0;
+      const highStakesEvent = eventStakes > 0;
       const homeProgramQuality = programQuality[home.team.shortDisplayName.toLowerCase()] ?? 0.52;
       const awayProgramQuality = programQuality[away.team.shortDisplayName.toLowerCase()] ?? 0.52;
+      const homeRating = teamRating(home.team.shortDisplayName);
+      const awayRating = teamRating(away.team.shortDisplayName);
       const averageRecordQuality = (homeWinPct + awayWinPct) / 2;
       const averageProgramQuality = (homeProgramQuality + awayProgramQuality) / 2;
       const provenQualityMatchup = homeProgramQuality >= 0.7 && awayProgramQuality >= 0.7;
@@ -182,12 +239,14 @@ export async function GET(request: NextRequest) {
         : lowerDivisionOpponent ? 0.16
         : !homeRecordKnown || !awayRecordKnown ? 0.28
         : clamp(1 - (Math.abs(homeWinPct - awayWinPct) * 0.6 + Math.abs(homeProgramQuality - awayProgramQuality) * 0.4), 0.22, 1);
-      const competitiveness = 42 * projectedCloseness;
-      const matchupQuality = 28 * clamp(
-        averageRecordQuality * 0.65 + averageProgramQuality * 0.35 + (provenQualityMatchup ? 0.08 : 0) + (bothRanked ? 0.15 : oneRanked ? 0.06 : 0),
-        0,
-        1,
+      const competitiveness = 30 * projectedCloseness;
+      const qualityIndex = matchupQualityIndex(
+        homeRating,
+        awayRating,
+        clamp(homeProgramQuality * 0.7 + homeWinPct * 0.3, 0.15, 0.9),
+        clamp(awayProgramQuality * 0.7 + awayWinPct * 0.3, 0.15, 0.9),
       );
+      const matchupQuality = 42 * clamp(qualityIndex * 0.88 + averageRecordQuality * 0.12, 0, 1);
       const crowdScore = Math.round(clamp(
         competition.neutralSite
           ? 48 + averageProgramQuality * 18 + rankedDemand + Math.min(rivalry, 8) + (highStakesEvent ? 6 : 0) + timingBonus
@@ -196,25 +255,31 @@ export async function GET(request: NextRequest) {
         92,
       ));
       const crowdConfidence = lowerDivisionOpponent ? 'Low' : knownHomeAtmosphere !== undefined || competition.neutralSite ? 'Medium' : 'Low';
-      const stakes = clamp(rivalry + (highStakesEvent ? 6 : 0), 0, 15);
+      const stakes = clamp(rivalry + eventStakes, 0, 15);
       const nationalSignificance = bothRanked ? 5 : oneRanked ? 3 : 0;
-      const crowdContribution = crowdScore * 0.1;
+      const crowdContribution = crowdScore * 0.08;
       const rawWatchability = competitiveness + crowdContribution + matchupQuality + stakes + nationalSignificance;
-      const watchability = Math.round(clamp(rawWatchability + 7 + (rawWatchability < 60 ? 3 : 0), 0, 98));
+      const weakRatedMatchup = bothOutsideTop150(homeRating, awayRating);
+      const scoreCeiling = lowerDivisionOpponent ? 52 : weakRatedMatchup && !rivalry && !highStakesEvent ? 64 : 98;
+      const watchability = Math.round(clamp(rawWatchability + 4, 0, scoreCeiling));
 
       const tags = [
         bothRanked ? 'Ranked matchup' : oneRanked ? 'Top 25 team' : null,
         spread !== undefined && spread <= 4 ? 'Projected close' : null,
         !oneRanked && (provenQualityMatchup || (homeWinPct >= 0.65 && awayWinPct >= 0.65)) ? 'Quality unranked matchup' : null,
+        weakRatedMatchup ? 'Both outside top 150' : null,
         rivalry >= 11 ? 'Major rivalry' : rivalry ? 'Rivalry' : null,
         lowerDivisionOpponent ? 'Lower-division opponent' : null,
         eventNote || null,
         competition.neutralSite ? 'Neutral site' : null,
       ].filter(Boolean);
       const rankingReasons = [
-        spread !== undefined && spread <= 6 ? `${spread}-point betting line` : `${Math.round(competitiveness)} of 42 competitiveness points`,
+        `${away.team.shortDisplayName}: ${ratingLabel(awayRating)}`,
+        `${home.team.shortDisplayName}: ${ratingLabel(homeRating)}`,
+        spread !== undefined && spread <= 6 ? `${spread}-point betting line` : `${Math.round(competitiveness)} of 30 competitiveness points`,
         `${homeRecord} vs ${awayRecord} records`,
         lowerDivisionOpponent ? 'lower-division opponent limits the pregame ceiling' : null,
+        weakRatedMatchup ? 'neither team is top 150 in NET or KenPom, so pregame watchability is capped' : null,
         provenQualityMatchup ? 'two proven quality programs' : null,
         rivalry ? `${rivalry}-point rivalry boost` : null,
         highStakesEvent ? eventNote : null,
@@ -225,8 +290,8 @@ export async function GET(request: NextRequest) {
         date: event.date,
         time: '',
         network: competition.broadcasts?.flatMap((item: any) => item.names ?? []).join(' · ') || 'Broadcast TBD',
-        away: { id: away.team.id, name: away.team.shortDisplayName, short: away.team.abbreviation, record: awayRecord, rank: awayRank, color: `#${away.team.color || '456'}`, logo: away.team.logo, score: away.score },
-        home: { id: home.team.id, name: home.team.shortDisplayName, short: home.team.abbreviation, record: homeRecord, rank: homeRank, color: `#${home.team.color || '456'}`, logo: home.team.logo, score: home.score },
+        away: { id: away.team.id, name: away.team.shortDisplayName, short: away.team.abbreviation, record: awayRecord, rank: awayRank, netRank: awayRating.netRank, kenPomRank: awayRating.kenPomRank, color: `#${away.team.color || '456'}`, logo: away.team.logo, score: away.score },
+        home: { id: home.team.id, name: home.team.shortDisplayName, short: home.team.abbreviation, record: homeRecord, rank: homeRank, netRank: homeRating.netRank, kenPomRank: homeRating.kenPomRank, color: `#${home.team.color || '456'}`, logo: home.team.logo, score: home.score },
         venue: competition.venue?.fullName || 'Venue TBD',
         city: [competition.venue?.address?.city, competition.venue?.address?.state].filter(Boolean).join(', ') || 'Location TBD',
         watchability,
@@ -253,7 +318,11 @@ export async function GET(request: NextRequest) {
       };
     }).filter(Boolean);
 
-    const baseOrder = [...games].sort((a: any, b: any) => b.watchability - a.watchability);
+    const baseOrder = [...games].sort((a: any, b: any) =>
+      b.watchability - a.watchability
+      || b.breakdown.matchupQuality - a.breakdown.matchupQuality
+      || b.breakdown.competitiveness - a.breakdown.competitiveness,
+    );
     const strongGameCount = baseOrder.filter((game: any) => game.watchability >= 70).length;
     const tenthBestScore = baseOrder[9]?.watchability ?? 100;
     let finalOrder = baseOrder;
@@ -280,7 +349,13 @@ export async function GET(request: NextRequest) {
 
     finalOrder.forEach((game: any, index: number) => { game.rankingOrder = index + 1; });
 
-    return NextResponse.json({ date, games: finalOrder, source: 'ESPN schedule reference', sourceUrl: 'https://www.espn.com/mens-college-basketball/schedule' });
+    return NextResponse.json({
+      date,
+      games: finalOrder,
+      source: 'ESPN schedule reference',
+      sourceUrl: 'https://www.espn.com/mens-college-basketball/schedule',
+      ratingSources: { net: netRatings.size > 0, kenPom: kenPomRatings.size > 0 },
+    });
   } catch (error) {
     return NextResponse.json({ error: 'The ESPN schedule could not be loaded right now.' }, { status: 502 });
   }

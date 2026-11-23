@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 type Game = {
   id: number; time: string; network: string;
-  away: { id?: string; name: string; short: string; record: string; rank?: number; color: string; logo?: string; score?: string };
-  home: { id?: string; name: string; short: string; record: string; rank?: number; color: string; logo?: string; score?: string };
+  away: { id?: string; name: string; short: string; record: string; rank?: number; netRank?: number; kenPomRank?: number; color: string; logo?: string; score?: string };
+  home: { id?: string; name: string; short: string; record: string; rank?: number; netRank?: number; kenPomRank?: number; color: string; logo?: string; score?: string };
   venue: string; city: string; watchability: number; crowd: number; margin: string; tags: string[]; conference: string;
   date?: string; state?: 'pre' | 'in' | 'post'; status?: string; liveExcitement?: number; neutralSite?: boolean; rankingReasons?: string[];
   breakdown?: { competitiveness: number; crowd: number; matchupQuality: number; stakes: number; nationalSignificance: number };
@@ -135,14 +135,14 @@ function GameDetails({ game, open, onOpenChange, date }: { game: Game | null; op
     <div className="detail-hero">
       <div className="detail-meta"><span>{game.state === 'in' ? 'LIVE' : game.state === 'post' ? 'FINAL' : game.time}</span><strong>{game.network}</strong></div>
       <div className="detail-teams">
-        {[game.away, game.home].map((team, index) => <div key={team.name}><span><TeamMark team={team} /><i>{index === 0 ? 'AWAY' : game.neutralSite ? 'NEUTRAL' : 'HOME'}</i><b>{team.rank && `#${team.rank} `}{team.name}<small>{team.record}</small></b></span>{game.state !== 'pre' && team.score && <strong>{team.score}</strong>}</div>)}
+        {[game.away, game.home].map((team, index) => <div key={team.name}><span><TeamMark team={team} /><i>{index === 0 ? 'AWAY' : game.neutralSite ? 'NEUTRAL' : 'HOME'}</i><b>{team.rank && `#${team.rank} `}{team.name}<small>{team.record}{team.netRank ? ` · NET #${team.netRank}` : ''}{team.kenPomRank ? ` · KenPom #${team.kenPomRank}` : ''}</small></b></span>{game.state !== 'pre' && team.score && <strong>{team.score}</strong>}</div>)}
       </div>
       <div className="detail-location"><MapPin size={15} /><span><strong>{game.venue}</strong>{game.city} {game.neutralSite && '· Neutral site'}</span></div>
     </div>
     <div className="detail-score-grid"><div><ScoreRing value={game.watchability} label="Watchability" /></div><div className="detail-crowd"><CrowdMeter value={game.crowd} confidence={game.crowdConfidence} />{game.crowdFactors?.length ? <small>{game.crowdFactors.join(' · ')}</small> : null}</div>{game.liveExcitement !== undefined && <div className="live-detail-score"><strong>{game.liveExcitement}</strong><span>Live excitement</span></div>}</div>
     <section className="detail-section"><div className="detail-section-title"><h3>Why this game ranks here</h3><span>{game.margin}</span></div><div className="detail-tags">{game.tags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}</div><ul>{(game.rankingReasons?.length ? game.rankingReasons : ['Schedule data is verified; deeper matchup inputs are still being added.']).map((reason) => <li key={reason}>{reason}</li>)}</ul></section>
     <section className="detail-section"><div className="detail-section-title"><h3>Watchability breakdown</h3><span>{game.watchability}/100</span></div><div className="breakdown-grid">
-      {[['Competitiveness', breakdown.competitiveness, 42], ['Matchup quality', breakdown.matchupQuality, 28], ['Rivalry & stakes', breakdown.stakes, 15], ['Crowd atmosphere', breakdown.crowd, 10], ['National significance', breakdown.nationalSignificance, 5]].map(([label, value, max]) => <div key={String(label)}><span>{label}</span><b>{value}/{max}</b><i><em style={{ width: `${Math.min(100, (Number(value) / Number(max)) * 100)}%` }} /></i></div>)}
+      {[['Matchup quality', breakdown.matchupQuality, 42], ['Competitiveness', breakdown.competitiveness, 30], ['Rivalry & stakes', breakdown.stakes, 15], ['Crowd atmosphere', breakdown.crowd, 8], ['National significance', breakdown.nationalSignificance, 5]].map(([label, value, max]) => <div key={String(label)}><span>{label}</span><b>{value}/{max}</b><i><em style={{ width: `${Math.min(100, (Number(value) / Number(max)) * 100)}%` }} /></i></div>)}
     </div></section>
     <section className="detail-section market-section"><div className="detail-section-title"><div><h3>Win probabilities</h3><p>ESPN&apos;s matchup projection alongside a verified Kalshi game market.</p></div></div><div className="market-grid"><ProbabilityCard result={espnProbability ?? undefined} teams={[game.away, game.home]} /><ProbabilityCard result={markets?.kalshi} teams={[game.away, game.home]} /></div><p className="market-disclaimer">{markets?.disclaimer ?? 'ESPN projections and market prices can change. Kalshi data is informational, not betting or financial advice.'}</p></section>
   </DialogContent></Dialog>;
