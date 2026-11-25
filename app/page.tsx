@@ -61,13 +61,13 @@ function FeaturedGame({ game, onSelect }: { game: Game; onSelect: (game: Game) =
       : game.away.rank || game.home.rank
         ? `a Top 25 team is in action; competitiveness and atmosphere are still provisional.`
         : `it currently leads the provisional model for this date; detailed matchup inputs are still being added.`;
-  return <article className="featured-card clickable-game" role="button" tabIndex={0} onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelect(game); }}>
-    <div className="featured-topline"><div><span className="live-dot" /> TONIGHT&apos;S PICK</div><span>{game.time} CT · {game.network}</span></div>
+  return <article className={`featured-card clickable-game ${game.state === 'in' ? 'is-live' : ''}`} role="button" tabIndex={0} onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelect(game); }}>
+    <div className="featured-topline"><div><span className="live-dot" /> {game.state === 'in' ? 'LIVE NOW' : game.state === 'post' ? 'FINAL' : 'TONIGHT\'S PICK'}</div><span>{game.state === 'in' || game.state === 'post' ? game.status : game.time} · {game.network}</span></div>
     <div className="featured-body">
       <div className="featured-matchup">
-        <div className="featured-team"><TeamMark team={game.away} /><div><span className="eyebrow">AWAY · {game.away.record}</span><h2>{game.away.rank && <b>#{game.away.rank}</b>} {game.away.name}</h2></div></div>
+        <div className="featured-team"><TeamMark team={game.away} /><div><span className="eyebrow">AWAY · {game.away.record}</span><h2>{game.away.rank && <b>#{game.away.rank}</b>} {game.away.name}</h2></div>{game.state !== 'pre' && <strong key={game.away.score} className="featured-game-score">{game.away.score}</strong>}</div>
         <div className="at-mark">at</div>
-        <div className="featured-team"><TeamMark team={game.home} /><div><span className="eyebrow home-label">HOME · {game.home.record}</span><h2>{game.home.rank && <b>#{game.home.rank}</b>} {game.home.name}</h2></div></div>
+        <div className="featured-team"><TeamMark team={game.home} /><div><span className="eyebrow home-label">HOME · {game.home.record}</span><h2>{game.home.rank && <b>#{game.home.rank}</b>} {game.home.name}</h2></div>{game.state !== 'pre' && <strong key={game.home.score} className="featured-game-score">{game.home.score}</strong>}</div>
       </div>
       <div className="featured-scores"><ScoreRing value={game.watchability} label="Watchability" /></div>
     </div>
@@ -82,12 +82,12 @@ function FeaturedGame({ game, onSelect }: { game: Game; onSelect: (game: Game) =
 }
 
 function GameRow({ game, index, onSelect }: { game: Game; index: number; onSelect: (game: Game) => void }) {
-  return <article className="game-row clickable-game" role="button" tabIndex={0} onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelect(game); }}>
+  return <article className={`game-row clickable-game ${game.state === 'in' ? 'is-live' : ''} ${game.state === 'post' ? 'is-final' : ''}`} role="button" tabIndex={0} onClick={() => onSelect(game)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onSelect(game); }}>
     <div className="rank-number">{index + 2}</div>
-    <div className="game-time"><strong>{game.time}</strong><span>{game.network}</span></div>
+    <div className="game-time"><strong>{game.state === 'in' ? <><i /> LIVE</> : game.state === 'post' ? 'FINAL' : game.time}</strong><span>{game.state === 'in' || game.state === 'post' ? game.status : game.network}</span>{game.state === 'in' && <small>{game.network}</small>}</div>
     <div className="compact-matchup">
-      <div><TeamMark team={game.away} /><span>{game.away.rank && <b>#{game.away.rank} </b>}{game.away.name}</span><small>{game.away.record}</small></div>
-      <div><TeamMark team={game.home} /><span>{game.home.rank && <b>#{game.home.rank} </b>}{game.home.name} <em>HOME</em></span><small>{game.home.record}</small></div>
+      <div><TeamMark team={game.away} /><span>{game.away.rank && <b>#{game.away.rank} </b>}{game.away.name}</span>{game.state !== 'pre' ? <b key={game.away.score} className="row-game-score">{game.away.score}</b> : <small>{game.away.record}</small>}</div>
+      <div><TeamMark team={game.home} /><span>{game.home.rank && <b>#{game.home.rank} </b>}{game.home.name} <em>HOME</em></span>{game.state !== 'pre' ? <b key={game.home.score} className="row-game-score">{game.home.score}</b> : <small>{game.home.record}</small>}</div>
     </div>
     <div className="game-context"><span>{game.margin}</span><small>{game.venue}</small></div>
     <div className="mini-score"><strong>{game.watchability}</strong><span>WATCH</span></div><div className="mini-score crowd"><strong>{game.crowd}</strong><span>CROWD</span></div>
@@ -133,7 +133,7 @@ function GameDetails({ game, open, onOpenChange, date }: { game: Game | null; op
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="game-detail-dialog">
     <DialogHeader><DialogTitle>Game details</DialogTitle><DialogDescription>{game.away.name} at {game.home.name} · complete matchup snapshot</DialogDescription></DialogHeader>
     <div className="detail-hero">
-      <div className="detail-meta"><span>{game.state === 'in' ? 'LIVE' : game.state === 'post' ? 'FINAL' : game.time}</span><strong>{game.network}</strong></div>
+      <div className="detail-meta"><span>{game.state === 'in' ? `LIVE · ${game.status}` : game.state === 'post' ? 'FINAL' : game.time}</span><strong>{game.network}</strong></div>
       <div className="detail-teams">
         {[game.away, game.home].map((team, index) => <div key={team.name}><span><TeamMark team={team} /><i>{index === 0 ? 'AWAY' : game.neutralSite ? 'NEUTRAL' : 'HOME'}</i><b>{team.rank && `#${team.rank} `}{team.name}<small>{team.record}{team.netRank ? ` · NET #${team.netRank}` : ''}{team.kenPomRank ? ` · KenPom #${team.kenPomRank}` : ''}</small></b></span>{game.state !== 'pre' && team.score && <strong>{team.score}</strong>}</div>)}
       </div>
@@ -148,20 +148,20 @@ function GameDetails({ game, open, onOpenChange, date }: { game: Game | null; op
   </DialogContent></Dialog>;
 }
 
-function LiveBoard({ games, lastUpdated }: { games: Game[]; lastUpdated?: Date | null }) {
+function LiveBoard({ games, lastUpdated, onSelect }: { games: Game[]; lastUpdated?: Date | null; onSelect: (game: Game) => void }) {
   const liveGames = [...games].filter((game) => game.state === 'in').sort((a, b) => (b.liveExcitement ?? 0) - (a.liveExcitement ?? 0));
   if (!liveGames.length) return <section className="live-board" id="live"><div className="live-board-header"><div><span><Radio size={14} /> LIVE SCOREBOARD</span><h2>No Division I games are live right now</h2><p>ESPN is checked every 15 seconds{lastUpdated ? ` · Last check ${lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : ''}.</p></div><Badge>Auto-refreshing</Badge></div><div className="live-rule"><Sparkles size={16} /><p>Pregame quality never blocks a game from appearing here. Live margin, time remaining, lead changes, runs, comebacks, overtime, and win-probability swings drive this list.</p></div></section>;
   const leader = liveGames[0];
   return <section className="live-board" id="live">
     <div className="live-board-header"><div><span><Radio size={14} /> LIVE SCOREBOARD</span><h2>Crazy games, regardless of the matchup</h2><p>Scores and clocks refresh from ESPN every 15 seconds{lastUpdated ? ` · Last check ${lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : ''}.</p></div><Badge>Auto-updating</Badge></div>
-    <article className="live-feature">
+    <button className="live-feature" onClick={() => onSelect(leader)}>
       <div className="live-rank">#1 <small>LIVE</small></div>
-      <div className="live-teams"><div><strong>{leader.away.name}</strong><b>{leader.away.score}</b></div><div><strong>{leader.home.name}</strong><b>{leader.home.score}</b></div><span>{leader.status}</span></div>
+      <div className="live-teams"><div><strong>{leader.away.name}</strong><b key={leader.away.score}>{leader.away.score}</b></div><div><strong>{leader.home.name}</strong><b key={leader.home.score}>{leader.home.score}</b></div><span><i /> {leader.status}</span></div>
       <div className="live-excitement"><strong>{leader.liveExcitement}</strong><span>LIVE<br />EXCITEMENT</span></div>
       <div className="live-reasons"><span><Flame size={13} /> {Math.abs(Number(leader.home.score) - Number(leader.away.score)) <= 3 ? 'One-possession game' : 'Second-half action'}</span><span>All games eligible</span><span>{leader.network}</span></div>
       <div className="pregame-history"><span>Pregame watchability</span><strong>{leader.watchability}</strong><small>This stays visible, but does not limit its live rank.</small></div>
-    </article>
-    {liveGames.slice(1, 5).map((game, index) => <article className="live-compact" key={game.id}><div className="live-rank">#{index + 2}<small>LIVE</small></div><div><strong>{game.away.name} {game.away.score}</strong><strong>{game.home.name} {game.home.score}</strong><span>{game.status}</span></div><div className="live-excitement"><strong>{game.liveExcitement}</strong><span>LIVE</span></div></article>)}
+    </button>
+    {liveGames.slice(1, 5).map((game, index) => <button className="live-compact" key={game.id} onClick={() => onSelect(game)}><div className="live-rank">#{index + 2}<small>LIVE</small></div><div><strong>{game.away.name}<b key={game.away.score}>{game.away.score}</b></strong><strong>{game.home.name}<b key={game.home.score}>{game.home.score}</b></strong><span><i /> {game.status}</span></div><div className="live-excitement"><strong>{game.liveExcitement}</strong><span>LIVE</span></div></button>)}
     <div className="live-rule"><Sparkles size={16} /><p><strong>How this works:</strong> live margin, time remaining, lead changes, runs, comebacks, overtime, and win-probability swings determine this list. Team fame and pregame quality cannot keep a wild game out.</p></div>
   </section>;
 }
@@ -216,16 +216,18 @@ export default function Home() {
         .then((response) => response.json().then((body: any) => ({ ok: response.ok, body })))
         .then(({ ok, body }) => {
           if (!ok) throw new Error(body.error || 'Schedule unavailable');
-          setScheduleGames(body.games.map((game: Game) => ({ ...game, time: formatGameTime(game.date) })));
+          const nextGames = body.games.map((game: Game) => ({ ...game, time: formatGameTime(game.date) }));
+          setScheduleGames(nextGames);
+          setSelectedGame((current) => current ? nextGames.find((game: Game) => game.id === current.id) ?? current : null);
           setLastScheduleUpdate(new Date()); setScheduleError('');
         })
         .catch((error) => { if (error.name !== 'AbortError' && !silent) setScheduleError(error.message); })
         .finally(() => { if (!silent) setLoading(false); });
     };
     loadSchedule();
-    const timer = activeSection === 'live' ? window.setInterval(() => loadSchedule(true), 15000) : undefined;
+    const timer = activeSection !== 'rankings' && selectedDate === todayKey ? window.setInterval(() => loadSchedule(true), 15000) : undefined;
     return () => { controller.abort(); if (timer) window.clearInterval(timer); };
-  }, [selectedDate, activeSection]);
+  }, [selectedDate, activeSection, todayKey]);
 
   const openSection = (section: typeof activeSection) => {
     setActiveSection(section);
@@ -245,6 +247,7 @@ export default function Home() {
   const dateOptions = [-2, -1, 0, 1, 2].map((offset) => ({ key: shiftDate(selectedDate, offset), date: fromDateKey(shiftDate(selectedDate, offset)) }));
   const selectedDateObject = fromDateKey(selectedDate);
   const topLive = [...scheduleGames].filter((game) => game.state === 'in').sort((a, b) => (b.liveExcitement ?? 0) - (a.liveExcitement ?? 0))[0];
+  const liveCount = scheduleGames.filter((game) => game.state === 'in').length;
   return <main>
     <header className="site-header"><div className="header-inner">
       <a className="brand" href="#" aria-label="Courtside home"><img className="brand-logo" src="/courtside-logo.png" alt="Courtside" /></a>
@@ -260,8 +263,9 @@ export default function Home() {
         {activeSection !== 'rankings' && <div className="date-bar"><Button variant="ghost" size="icon" aria-label="Previous day" onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}><ChevronLeft size={20} /></Button>{dateOptions.map(({ key, date }, index) => <button key={key} className={index === 2 ? 'selected' : ''} onClick={() => setSelectedDate(key)}><span>{date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()}</span><strong>{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</strong>{key === todayKey && <small>TODAY</small>}</button>)}<Button variant="ghost" size="icon" aria-label="Next day" onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}><ChevronRight size={20} /></Button><label className="calendar-button"><CalendarDays size={16} /><span>Calendar</span><input type="date" value={selectedDate} onChange={(event) => event.target.value && setSelectedDate(event.target.value)} /></label></div>}
         <div className="page-heading"><div><p>{activeSection === 'rankings' ? 'LATEST OFFICIAL RELEASE' : selectedDateObject.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</p><h1>{activeSection === 'live' ? 'Live scores & nail-biters' : activeSection === 'rankings' ? 'NCAA NET rankings' : activeSection === 'rivalries' ? 'Rivalries & high-stakes games' : activeSection === 'crowds' ? 'Best crowds' : selectedDate === todayKey ? 'Best games today' : 'Best games'}</h1><span>{activeSection === 'rankings' ? 'Latest official NCAA release · automatically updated' : `${scheduleGames.length} Division I games · Times shown locally · ESPN schedule reference`}</span></div><div className="search-wrap"><Search size={17} /><Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={activeSection === 'rankings' ? 'Search schools or conferences' : 'Search teams, conferences or networks'} /></div></div>
         <div className="mobile-section-tabs" role="navigation" aria-label="Sections">{([['games', 'Games'], ['live', 'Live'], ['rankings', 'Rankings'], ['rivalries', 'Rivalries'], ['crowds', 'Crowds']] as const).map(([section, label]) => <button key={section} className={activeSection === section ? 'active' : ''} onClick={() => openSection(section)}>{label}</button>)}</div>
+        {activeSection !== 'rankings' && selectedDate === todayKey && liveCount > 0 && <div className="live-update-bar" aria-live="polite"><span><i /> {liveCount} {liveCount === 1 ? 'game' : 'games'} live</span><strong>Scores refresh every 15 seconds</strong><small>{lastScheduleUpdate ? `Updated ${lastScheduleUpdate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : 'Connecting…'}</small><button onClick={() => openSection('live')}>View live scoreboard <ChevronRight size={13} /></button></div>}
         {activeSection === 'games' && <div className="filter-row" role="group" aria-label="Game views">{['Best games', 'All games', 'Top 25', 'On TV'].map((filter) => <Button key={filter} onClick={() => setActiveFilter(filter)} variant={activeFilter === filter ? 'default' : 'outline'} size="sm">{filter}</Button>)}</div>}
-        {activeSection === 'rankings' ? <NetRankings query={query} /> : loading ? <div className="schedule-state"><LoaderCircle className="spin" size={24} /><h3>Loading ESPN schedule</h3><p>Checking every Division I game for this date.</p></div> : scheduleError ? <div className="schedule-state error"><h3>Schedule temporarily unavailable</h3><p>{scheduleError}</p><Button variant="outline" size="sm" onClick={() => setSelectedDate(todayKey)}>Return to today</Button></div> : activeSection === 'live' ? <LiveBoard games={searchedGames} lastUpdated={lastScheduleUpdate} /> : filtered.length ? <><FeaturedGame game={filtered[0]} onSelect={setSelectedGame} /><div className="list-heading"><div><h3>{activeSection === 'crowds' ? 'More great atmospheres' : activeSection === 'rivalries' ? 'More rivalry and stakes games' : activeFilter === 'All games' ? 'Full schedule' : 'More games worth your time'}</h3><span>Synced from ESPN · provisional ranking model</span></div><a href="https://www.espn.com/mens-college-basketball/schedule" target="_blank" rel="noreferrer">View ESPN schedule</a></div><div className="game-list">{filtered.slice(1).map((game, index) => <GameRow game={game} index={index} key={game.id} onSelect={setSelectedGame} />)}</div></> : <div className="empty-state"><CalendarDays size={28} /><h3>{activeSection === 'rivalries' ? 'No verified rivalries on this date' : 'No Division I games listed'}</h3><p>{query ? 'Try clearing your search.' : 'ESPN has no matching games listed for this date.'}</p></div>}
+        {activeSection === 'rankings' ? <NetRankings query={query} /> : loading ? <div className="schedule-state"><LoaderCircle className="spin" size={24} /><h3>Loading ESPN schedule</h3><p>Checking every Division I game for this date.</p></div> : scheduleError ? <div className="schedule-state error"><h3>Schedule temporarily unavailable</h3><p>{scheduleError}</p><Button variant="outline" size="sm" onClick={() => setSelectedDate(todayKey)}>Return to today</Button></div> : activeSection === 'live' ? <LiveBoard games={searchedGames} lastUpdated={lastScheduleUpdate} onSelect={setSelectedGame} /> : filtered.length ? <><FeaturedGame game={filtered[0]} onSelect={setSelectedGame} /><div className="list-heading"><div><h3>{activeSection === 'crowds' ? 'More great atmospheres' : activeSection === 'rivalries' ? 'More rivalry and stakes games' : activeFilter === 'All games' ? 'Full schedule' : 'More games worth your time'}</h3><span>Synced from ESPN · scores refresh every 15 seconds while games are live</span></div><a href="https://www.espn.com/mens-college-basketball/schedule" target="_blank" rel="noreferrer">View ESPN schedule</a></div><div className="game-list">{filtered.slice(1).map((game, index) => <GameRow game={game} index={index} key={game.id} onSelect={setSelectedGame} />)}</div></> : <div className="empty-state"><CalendarDays size={28} /><h3>{activeSection === 'rivalries' ? 'No verified rivalries on this date' : 'No Division I games listed'}</h3><p>{query ? 'Try clearing your search.' : 'ESPN has no matching games listed for this date.'}</p></div>}
       </section>
       <aside className="right-rail">
         <section className="side-card live-card">
