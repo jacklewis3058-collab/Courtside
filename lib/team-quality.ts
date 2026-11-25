@@ -3,6 +3,13 @@ export type TeamRating = {
   kenPomRank?: number;
 };
 
+export type MatchupQualityGuardrail = {
+  adjustment: number;
+  ceiling: number;
+  label: string;
+  limited: boolean;
+};
+
 const aliases: Record<string, string> = {
   appst: 'appalachianst',
   carkansas: 'centralarkansas',
@@ -56,6 +63,31 @@ function blendedStrength(rating: TeamRating, fallback: number) {
   return net ?? kenPom ?? fallback;
 }
 
+function bestAvailableRank(rating: TeamRating) {
+  const ranks = [rating.netRank, rating.kenPomRank].filter((rank): rank is number => rank !== undefined);
+  return ranks.length ? Math.min(...ranks) : undefined;
+}
+
+export function matchupQualityGuardrail(home: TeamRating, away: TeamRating): MatchupQualityGuardrail {
+  const homeRank = bestAvailableRank(home);
+  const awayRank = bestAvailableRank(away);
+  if (homeRank === undefined || awayRank === undefined) {
+    return { adjustment: -2, ceiling: 78, label: 'incomplete team-quality data', limited: true };
+  }
+
+  const better = Math.min(homeRank, awayRank);
+  const weaker = Math.max(homeRank, awayRank);
+  if (weaker <= 50) return { adjustment: 7, ceiling: 98, label: 'two top-50 teams', limited: false };
+  if (weaker <= 75) return { adjustment: 5, ceiling: 98, label: 'two top-75 teams', limited: false };
+  if (weaker <= 100 && better <= 50) return { adjustment: 6, ceiling: 94, label: 'top-50 team against a top-100 opponent', limited: false };
+  if (weaker <= 100 && better <= 75) return { adjustment: 1, ceiling: 84, label: 'top-75 team against a top-100 opponent', limited: false };
+  if (weaker <= 100) return { adjustment: -10, ceiling: 58, label: 'neither team reaches the top 75', limited: true };
+  if (weaker <= 150 && better <= 75) return { adjustment: -2, ceiling: 78, label: 'one top-75 team but a weaker opponent', limited: true };
+  if (weaker <= 150) return { adjustment: -7, ceiling: 62, label: 'no top-75 team in the matchup', limited: true };
+  if (better <= 150) return { adjustment: -9, ceiling: 58, label: 'only one team reaches the top 150', limited: true };
+  return { adjustment: -12, ceiling: 52, label: 'both teams are outside the top 150', limited: true };
+}
+
 export function matchupQualityIndex(
   home: TeamRating,
   away: TeamRating,
@@ -70,13 +102,6 @@ export function matchupQualityIndex(
   // The weaker team matters most. This is deliberately different from a
   // popularity score: two strong teams beat one brand-name team and a cupcake.
   return Math.min(1, weaker * 0.62 + stronger * 0.25 + ((homeStrength + awayStrength) / 2) * 0.13);
-}
-
-export function bothOutsideTop150(home: TeamRating, away: TeamRating) {
-  const ranks = [home.netRank, home.kenPomRank, away.netRank, away.kenPomRank];
-  const hasHomeRating = home.netRank !== undefined || home.kenPomRank !== undefined;
-  const hasAwayRating = away.netRank !== undefined || away.kenPomRank !== undefined;
-  return hasHomeRating && hasAwayRating && ranks.every((rank) => rank === undefined || rank > 150);
 }
 
 export function ratingLabel(rating: TeamRating) {

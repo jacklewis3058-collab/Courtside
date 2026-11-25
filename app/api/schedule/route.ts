@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { bothOutsideTop150, matchupQualityIndex, normalizeTeamName, ratingLabel, type TeamRating } from '@/lib/team-quality';
+import { matchupQualityGuardrail, matchupQualityIndex, normalizeTeamName, ratingLabel, type TeamRating } from '@/lib/team-quality';
 
 const NCAA_DATA = 'https://ncaa-api.henrygd.me/rankings/basketball-men/d1/ncaa-mens-basketball-net-rankings';
 const KENPOM_API = 'https://kenpom.com/api.php';
@@ -239,14 +239,15 @@ export async function GET(request: NextRequest) {
         : lowerDivisionOpponent ? 0.16
         : !homeRecordKnown || !awayRecordKnown ? 0.28
         : clamp(1 - (Math.abs(homeWinPct - awayWinPct) * 0.6 + Math.abs(homeProgramQuality - awayProgramQuality) * 0.4), 0.22, 1);
-      const competitiveness = 30 * projectedCloseness;
+      const competitiveness = 22 * projectedCloseness;
       const qualityIndex = matchupQualityIndex(
         homeRating,
         awayRating,
         clamp(homeProgramQuality * 0.7 + homeWinPct * 0.3, 0.15, 0.9),
         clamp(awayProgramQuality * 0.7 + awayWinPct * 0.3, 0.15, 0.9),
       );
-      const matchupQuality = 42 * clamp(qualityIndex * 0.88 + averageRecordQuality * 0.12, 0, 1);
+      const matchupQuality = 50 * clamp(qualityIndex * 0.9 + averageRecordQuality * 0.1, 0, 1);
+      const qualityGuardrail = matchupQualityGuardrail(homeRating, awayRating);
       const crowdScore = Math.round(clamp(
         competition.neutralSite
           ? 48 + averageProgramQuality * 18 + rankedDemand + Math.min(rivalry, 8) + (highStakesEvent ? 6 : 0) + timingBonus
@@ -258,16 +259,16 @@ export async function GET(request: NextRequest) {
       const stakes = clamp(rivalry + eventStakes, 0, 15);
       const nationalSignificance = bothRanked ? 5 : oneRanked ? 3 : 0;
       const crowdContribution = crowdScore * 0.08;
-      const rawWatchability = competitiveness + crowdContribution + matchupQuality + stakes + nationalSignificance;
-      const weakRatedMatchup = bothOutsideTop150(homeRating, awayRating);
-      const scoreCeiling = lowerDivisionOpponent ? 52 : weakRatedMatchup && !rivalry && !highStakesEvent ? 64 : 98;
+      const rawWatchability = competitiveness + crowdContribution + matchupQuality + stakes + nationalSignificance + qualityGuardrail.adjustment;
+      const contextCeiling = rivalry >= 11 ? Math.max(qualityGuardrail.ceiling, 82) : rivalry >= 7 || eventStakes >= 6 ? Math.max(qualityGuardrail.ceiling, 76) : qualityGuardrail.ceiling;
+      const scoreCeiling = lowerDivisionOpponent ? 48 : contextCeiling;
       const watchability = Math.round(clamp(rawWatchability + 4, 0, scoreCeiling));
 
       const tags = [
         bothRanked ? 'Ranked matchup' : oneRanked ? 'Top 25 team' : null,
         spread !== undefined && spread <= 4 ? 'Projected close' : null,
-        !oneRanked && (provenQualityMatchup || (homeWinPct >= 0.65 && awayWinPct >= 0.65)) ? 'Quality unranked matchup' : null,
-        weakRatedMatchup ? 'Both outside top 150' : null,
+        !oneRanked && !qualityGuardrail.limited ? 'Quality unranked matchup' : null,
+        qualityGuardrail.limited ? 'Quality ceiling applied' : null,
         rivalry >= 11 ? 'Major rivalry' : rivalry ? 'Rivalry' : null,
         lowerDivisionOpponent ? 'Lower-division opponent' : null,
         eventNote || null,
@@ -276,10 +277,11 @@ export async function GET(request: NextRequest) {
       const rankingReasons = [
         `${away.team.shortDisplayName}: ${ratingLabel(awayRating)}`,
         `${home.team.shortDisplayName}: ${ratingLabel(homeRating)}`,
-        spread !== undefined && spread <= 6 ? `${spread}-point betting line` : `${Math.round(competitiveness)} of 30 competitiveness points`,
+        qualityGuardrail.label,
+        spread !== undefined && spread <= 6 ? `${spread}-point betting line` : `${Math.round(competitiveness)} of 22 competitiveness points`,
         `${homeRecord} vs ${awayRecord} records`,
         lowerDivisionOpponent ? 'lower-division opponent limits the pregame ceiling' : null,
-        weakRatedMatchup ? 'neither team is top 150 in NET or KenPom, so pregame watchability is capped' : null,
+        qualityGuardrail.limited ? `team quality limits this game's pregame ceiling to ${scoreCeiling}` : null,
         provenQualityMatchup ? 'two proven quality programs' : null,
         rivalry ? `${rivalry}-point rivalry boost` : null,
         highStakesEvent ? eventNote : null,
