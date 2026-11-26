@@ -12,7 +12,7 @@ type Game = {
   away: { id?: string; name: string; short: string; record: string; rank?: number; netRank?: number; kenPomRank?: number; color: string; logo?: string; score?: string };
   home: { id?: string; name: string; short: string; record: string; rank?: number; netRank?: number; kenPomRank?: number; color: string; logo?: string; score?: string };
   venue: string; city: string; watchability: number; crowd: number; margin: string; tags: string[]; conference: string;
-  date?: string; state?: 'pre' | 'in' | 'post'; status?: string; liveExcitement?: number; neutralSite?: boolean; rankingReasons?: string[];
+  date?: string; state?: 'pre' | 'in' | 'post'; status?: string; liveExcitement?: number; liveRankScore?: number; liveFactors?: string[]; neutralSite?: boolean; rankingReasons?: string[];
   breakdown?: { competitiveness: number; crowd: number; matchupQuality: number; stakes: number; nationalSignificance: number };
   crowdConfidence?: 'High' | 'Medium' | 'Low'; crowdFactors?: string[];
   rankingOrder?: number;
@@ -52,7 +52,9 @@ function CrowdMeter({ value, confidence }: { value: number; confidence?: string 
 }
 
 function FeaturedGame({ game, onSelect }: { game: Game; onSelect: (game: Game) => void }) {
-  const rankingReason = game.rankingReasons?.length
+  const rankingReason = game.state === 'in' && game.liveRankScore
+    ? `live rank ${game.liveRankScore}: ${(game.liveFactors ?? ['live action']).join(', ')}; pregame watchability was ${game.watchability}.`
+    : game.rankingReasons?.length
     ? `${game.rankingReasons.join(' · ')}.`
     : game.state === 'in'
     ? `${game.status}; its live excitement score is ${game.liveExcitement ?? 'updating'}.`
@@ -69,7 +71,7 @@ function FeaturedGame({ game, onSelect }: { game: Game; onSelect: (game: Game) =
         <div className="at-mark">at</div>
         <div className="featured-team"><TeamMark team={game.home} /><div><span className="eyebrow home-label">HOME · {game.home.record}</span><h2>{game.home.rank && <b>#{game.home.rank}</b>} {game.home.name}</h2></div>{game.state !== 'pre' && <strong key={game.home.score} className="featured-game-score">{game.home.score}</strong>}</div>
       </div>
-      <div className="featured-scores"><ScoreRing value={game.watchability} label="Watchability" /></div>
+      <div className="featured-scores"><ScoreRing value={game.state === 'in' ? game.liveRankScore ?? game.liveExcitement ?? game.watchability : game.watchability} label={game.state === 'in' ? 'Live rank' : 'Watchability'} /></div>
     </div>
     <div className="featured-footer">
       <div className="venue-line"><MapPin size={15} /> {game.venue} · {game.city}</div>
@@ -90,7 +92,7 @@ function GameRow({ game, index, onSelect }: { game: Game; index: number; onSelec
       <div><TeamMark team={game.home} /><span>{game.home.rank && <b>#{game.home.rank} </b>}{game.home.name} <em>HOME</em></span>{game.state !== 'pre' ? <b key={game.home.score} className="row-game-score">{game.home.score}</b> : <small>{game.home.record}</small>}</div>
     </div>
     <div className="game-context"><span>{game.margin}</span><small>{game.venue}</small></div>
-    <div className="mini-score"><strong>{game.watchability}</strong><span>WATCH</span></div><div className="mini-score crowd"><strong>{game.crowd}</strong><span>CROWD</span></div>
+    <div className={`mini-score ${game.state === 'in' ? 'live-score' : ''}`}><strong>{game.state === 'in' ? game.liveRankScore ?? game.liveExcitement : game.watchability}</strong><span>{game.state === 'in' ? 'LIVE RANK' : 'WATCH'}</span></div><div className="mini-score crowd"><strong>{game.crowd}</strong><span>CROWD</span></div>
   </article>;
 }
 
@@ -149,20 +151,20 @@ function GameDetails({ game, open, onOpenChange, date }: { game: Game | null; op
 }
 
 function LiveBoard({ games, lastUpdated, onSelect }: { games: Game[]; lastUpdated?: Date | null; onSelect: (game: Game) => void }) {
-  const liveGames = [...games].filter((game) => game.state === 'in').sort((a, b) => (b.liveExcitement ?? 0) - (a.liveExcitement ?? 0));
-  if (!liveGames.length) return <section className="live-board" id="live"><div className="live-board-header"><div><span><Radio size={14} /> LIVE SCOREBOARD</span><h2>No Division I games are live right now</h2><p>ESPN is checked every 15 seconds{lastUpdated ? ` · Last check ${lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : ''}.</p></div><Badge>Auto-refreshing</Badge></div><div className="live-rule"><Sparkles size={16} /><p>Pregame quality never blocks a game from appearing here. Live margin, time remaining, lead changes, runs, comebacks, overtime, and win-probability swings drive this list.</p></div></section>;
+  const liveGames = [...games].filter((game) => game.state === 'in').sort((a, b) => (b.liveRankScore ?? 0) - (a.liveRankScore ?? 0) || (b.liveExcitement ?? 0) - (a.liveExcitement ?? 0));
+  if (!liveGames.length) return <section className="live-board" id="live"><div className="live-board-header"><div><span><Radio size={14} /> LIVE SCOREBOARD</span><h2>No Division I games are live right now</h2><p>ESPN is checked every 15 seconds{lastUpdated ? ` · Last check ${lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : ''}.</p></div><Badge>Auto-refreshing</Badge></div><div className="live-rule"><Sparkles size={16} /><p>Every active game is eligible. Score margin, game clock, second-half pressure, overtime, and matchup quality determine how quickly it moves up.</p></div></section>;
   const leader = liveGames[0];
   return <section className="live-board" id="live">
     <div className="live-board-header"><div><span><Radio size={14} /> LIVE SCOREBOARD</span><h2>Crazy games, regardless of the matchup</h2><p>Scores and clocks refresh from ESPN every 15 seconds{lastUpdated ? ` · Last check ${lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}` : ''}.</p></div><Badge>Auto-updating</Badge></div>
     <button className="live-feature" onClick={() => onSelect(leader)}>
       <div className="live-rank">#1 <small>LIVE</small></div>
       <div className="live-teams"><div><strong>{leader.away.name}</strong><b key={leader.away.score}>{leader.away.score}</b></div><div><strong>{leader.home.name}</strong><b key={leader.home.score}>{leader.home.score}</b></div><span><i /> {leader.status}</span></div>
-      <div className="live-excitement"><strong>{leader.liveExcitement}</strong><span>LIVE<br />EXCITEMENT</span></div>
-      <div className="live-reasons"><span><Flame size={13} /> {Math.abs(Number(leader.home.score) - Number(leader.away.score)) <= 3 ? 'One-possession game' : 'Second-half action'}</span><span>All games eligible</span><span>{leader.network}</span></div>
+      <div className="live-excitement"><strong>{leader.liveRankScore}</strong><span>LIVE<br />RANK</span></div>
+      <div className="live-reasons"><span><Flame size={13} /> {(leader.liveFactors ?? ['Live action'])[0]}</span><span>{(leader.liveFactors ?? []).slice(1).join(' · ') || 'All games eligible'}</span><span>{leader.network}</span></div>
       <div className="pregame-history"><span>Pregame watchability</span><strong>{leader.watchability}</strong><small>This stays visible, but does not limit its live rank.</small></div>
     </button>
-    {liveGames.slice(1, 5).map((game, index) => <button className="live-compact" key={game.id} onClick={() => onSelect(game)}><div className="live-rank">#{index + 2}<small>LIVE</small></div><div><strong>{game.away.name}<b key={game.away.score}>{game.away.score}</b></strong><strong>{game.home.name}<b key={game.home.score}>{game.home.score}</b></strong><span><i /> {game.status}</span></div><div className="live-excitement"><strong>{game.liveExcitement}</strong><span>LIVE</span></div></button>)}
-    <div className="live-rule"><Sparkles size={16} /><p><strong>How this works:</strong> live margin, time remaining, lead changes, runs, comebacks, overtime, and win-probability swings determine this list. Team fame and pregame quality cannot keep a wild game out.</p></div>
+    {liveGames.slice(1, 5).map((game, index) => <button className="live-compact" key={game.id} onClick={() => onSelect(game)}><div className="live-rank">#{index + 2}<small>LIVE</small></div><div><strong>{game.away.name}<b key={game.away.score}>{game.away.score}</b></strong><strong>{game.home.name}<b key={game.home.score}>{game.home.score}</b></strong><span><i /> {game.status}</span></div><div className="live-excitement"><strong>{game.liveRankScore}</strong><span>LIVE RANK</span></div></button>)}
+    <div className="live-rule"><Sparkles size={16} /><p><strong>How this works:</strong> a close game rises as the clock gets later. Overtime and late one-possession finishes surge, while strong NET/KenPom matchups receive an additional quality boost. Every live game remains eligible.</p></div>
   </section>;
 }
 
@@ -237,16 +239,17 @@ export default function Home() {
   const searchedGames = useMemo(() => scheduleGames.filter((game) => `${game.away.name} ${game.home.name} ${game.conference} ${game.network}`.toLowerCase().includes(query.toLowerCase())), [query, scheduleGames]);
   const filtered = useMemo(() => {
     const ranked = [...searchedGames];
+    const currentValue = (game: Game) => game.state === 'in' ? Math.max(game.watchability, game.liveRankScore ?? 0) : game.watchability;
     if (activeSection === 'rivalries') return ranked.filter((game) => game.tags.some((tag) => /rival/i.test(tag)) || (game.breakdown?.stakes ?? 0) >= 7).sort((a, b) => (b.breakdown?.stakes ?? 0) - (a.breakdown?.stakes ?? 0) || b.watchability - a.watchability);
     if (activeSection === 'crowds') return ranked.sort((a, b) => b.crowd - a.crowd || b.watchability - a.watchability);
     if (activeFilter === 'All games') return ranked.sort((a, b) => new Date(a.date ?? 0).getTime() - new Date(b.date ?? 0).getTime());
     if (activeFilter === 'Top 25') return ranked.filter((game) => game.away.rank || game.home.rank).sort((a, b) => b.watchability - a.watchability);
     if (activeFilter === 'On TV') return ranked.filter((game) => game.network !== 'Broadcast TBD').sort((a, b) => (a.rankingOrder ?? 9999) - (b.rankingOrder ?? 9999));
-    return ranked.sort((a, b) => (a.rankingOrder ?? 9999) - (b.rankingOrder ?? 9999) || b.watchability - a.watchability);
+    return ranked.sort((a, b) => currentValue(b) - currentValue(a) || (a.rankingOrder ?? 9999) - (b.rankingOrder ?? 9999));
   }, [activeFilter, activeSection, searchedGames]);
   const dateOptions = [-2, -1, 0, 1, 2].map((offset) => ({ key: shiftDate(selectedDate, offset), date: fromDateKey(shiftDate(selectedDate, offset)) }));
   const selectedDateObject = fromDateKey(selectedDate);
-  const topLive = [...scheduleGames].filter((game) => game.state === 'in').sort((a, b) => (b.liveExcitement ?? 0) - (a.liveExcitement ?? 0))[0];
+  const topLive = [...scheduleGames].filter((game) => game.state === 'in').sort((a, b) => (b.liveRankScore ?? 0) - (a.liveRankScore ?? 0) || (b.liveExcitement ?? 0) - (a.liveExcitement ?? 0))[0];
   const liveCount = scheduleGames.filter((game) => game.state === 'in').length;
   return <main>
     <header className="site-header"><div className="header-inner">
@@ -270,7 +273,7 @@ export default function Home() {
       <aside className="right-rail">
         <section className="side-card live-card">
           <div className="side-title"><span><Radio size={16} /> LIVE NAIL-BITERS</span><button onClick={() => openSection('live')}>See all</button></div>
-          {topLive ? <button className="live-game live-game-button" onClick={() => setSelectedGame(topLive)}><div className="live-status"><span>LIVE</span> {topLive.status}<b>EXCITEMENT {topLive.liveExcitement}</b></div><div><strong>{topLive.away.name}</strong><b>{topLive.away.score}</b></div><div><strong>{topLive.home.name}</strong><b>{topLive.home.score}</b></div><div className="live-movement"><Flame size={13} /><span>Currently the best live finish</span></div><p>Pregame watchability: {topLive.watchability} · Every active game is eligible</p></button> : <div className="no-live-side"><Radio size={17} /><strong>No games are live</strong><span>We&apos;ll rank every game once play begins.</span></div>}
+          {topLive ? <button className="live-game live-game-button" onClick={() => setSelectedGame(topLive)}><div className="live-status"><span>LIVE</span> {topLive.status}<b>LIVE RANK {topLive.liveRankScore}</b></div><div><strong>{topLive.away.name}</strong><b>{topLive.away.score}</b></div><div><strong>{topLive.home.name}</strong><b>{topLive.home.score}</b></div><div className="live-movement"><Flame size={13} /><span>{topLive.liveFactors?.join(' · ') || 'Currently the best live finish'}</span></div><p>Pregame watchability: {topLive.watchability} · Every active game is eligible</p></button> : <div className="no-live-side"><Radio size={17} /><strong>No games are live</strong><span>We&apos;ll rank every game once play begins.</span></div>}
           <div className="all-eligible"><Sparkles size={13} /><span><strong>Every live game is eligible.</strong> Pregame quality never blocks a crazy finish.</span></div>
         </section>
         <section className="side-card"><div className="side-title"><span><Users size={16} /> BEST CROWDS</span><button onClick={() => openSection('crowds')}>See all</button></div>{[...scheduleGames].sort((a, b) => b.crowd - a.crowd).slice(0,3).map((g, i) => <button className="crowd-row" key={g.id} onClick={() => setSelectedGame(g)}><span>{i + 1}</span><div><strong>{g.home.name}</strong><small>vs {g.away.name}</small></div><b>{g.crowd}</b></button>)}</section>

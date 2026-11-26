@@ -195,7 +195,8 @@ export async function GET(request: NextRequest) {
       const oneRanked = Boolean(homeRank || awayRank);
       const state = event.status?.type?.state ?? 'pre';
       const margin = Math.abs(Number(home.score ?? 0) - Number(away.score ?? 0));
-      const liveExcitement = state === 'in' ? Math.max(30, Math.min(99, 98 - margin * 7)) : undefined;
+      const period = Number(event.status?.period ?? 0);
+      const clockSeconds = Number(event.status?.clock ?? 0);
       const homeRecord = record(home);
       const awayRecord = record(away);
       const homeRecordKnown = homeRecord !== '—';
@@ -263,6 +264,31 @@ export async function GET(request: NextRequest) {
       const contextCeiling = rivalry >= 11 ? Math.max(qualityGuardrail.ceiling, 82) : rivalry >= 7 || eventStakes >= 6 ? Math.max(qualityGuardrail.ceiling, 76) : qualityGuardrail.ceiling;
       const scoreCeiling = lowerDivisionOpponent ? 48 : contextCeiling;
       const watchability = Math.round(clamp(rawWatchability + 4, 0, scoreCeiling));
+      const qualityRatio = clamp(matchupQuality / 50, 0, 1);
+      const liveCloseness = clamp(40 - margin * 4, 0, 40);
+      const liveProgress = period >= 3
+        ? 25
+        : period === 2
+          ? 8 + clamp((1200 - clockSeconds) / 1200, 0, 1) * 12
+          : clamp((1200 - clockSeconds) / 1200, 0, 1) * 6;
+      const lateDrama = period >= 3
+        ? 12
+        : period === 2
+          ? (clockSeconds <= 300 && margin <= 10 ? 6 : 0)
+            + (clockSeconds <= 120 && margin <= 6 ? 8 : 0)
+            + (clockSeconds <= 30 && margin <= 3 ? 8 : 0)
+          : 0;
+      const liveExcitement = state === 'in'
+        ? Math.round(clamp(12 + liveCloseness + liveProgress + lateDrama + qualityRatio * 12, 30, 99))
+        : undefined;
+      const liveRankScore = state === 'in' && liveExcitement !== undefined
+        ? Math.round(clamp(liveExcitement * 0.65 + watchability * 0.35, 0, 99))
+        : undefined;
+      const liveFactors = state === 'in' ? [
+        margin <= 3 ? 'one-possession game' : margin <= 8 ? 'close game' : null,
+        period >= 3 ? 'overtime' : period === 2 && clockSeconds <= 300 ? 'late second half' : period === 2 ? 'second half' : 'first half',
+        qualityRatio >= 0.78 ? 'high-quality matchup' : qualityRatio >= 0.65 ? 'solid team quality' : null,
+      ].filter(Boolean) : [];
 
       const tags = [
         bothRanked ? 'Ranked matchup' : oneRanked ? 'Top 25 team' : null,
@@ -304,6 +330,8 @@ export async function GET(request: NextRequest) {
         state,
         status: event.status?.type?.shortDetail || event.status?.type?.description || '',
         liveExcitement,
+        liveRankScore,
+        liveFactors,
         neutralSite: Boolean(competition.neutralSite),
         crowdConfidence,
         crowdFactors: [
