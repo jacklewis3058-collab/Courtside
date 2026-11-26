@@ -13,6 +13,7 @@ type Game = {
   home: { id?: string; name: string; short: string; record: string; rank?: number; netRank?: number; kenPomRank?: number; color: string; logo?: string; score?: string };
   venue: string; city: string; watchability: number; crowd: number; margin: string; tags: string[]; conference: string;
   date?: string; state?: 'pre' | 'in' | 'post'; status?: string; liveExcitement?: number; liveRankScore?: number; liveFactors?: string[]; neutralSite?: boolean; rankingReasons?: string[];
+  espnWinProbability?: { away: number; home: number; asOf?: string };
   breakdown?: { competitiveness: number; crowd: number; matchupQuality: number; stakes: number; nationalSignificance: number };
   crowdConfidence?: 'High' | 'Medium' | 'Low'; crowdFactors?: string[];
   rankingOrder?: number;
@@ -77,6 +78,7 @@ function FeaturedGame({ game, onSelect }: { game: Game; onSelect: (game: Game) =
       <div className="venue-line"><MapPin size={15} /> {game.venue} · {game.city}</div>
       <div className="tag-row">{game.tags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}</div>
       <div className="why-row"><Sparkles size={16} /><span><strong>Why it ranks #1:</strong> {rankingReason}</span></div>
+      {game.state === 'in' && game.espnWinProbability && <div className="featured-live-projection"><span>ESPN LIVE WIN PROBABILITY</span><strong>{game.away.short} {game.espnWinProbability.away}%</strong><i><em style={{ width: `${game.espnWinProbability.away}%` }} /></i><strong>{game.home.short} {game.espnWinProbability.home}%</strong></div>}
       <CrowdMeter value={game.crowd} confidence={game.crowdConfidence} />
       <div className="view-details">View full game details <ChevronRight size={14} /></div>
     </div>
@@ -91,7 +93,7 @@ function GameRow({ game, index, onSelect }: { game: Game; index: number; onSelec
       <div><TeamMark team={game.away} /><span>{game.away.rank && <b>#{game.away.rank} </b>}{game.away.name}</span>{game.state !== 'pre' ? <b key={game.away.score} className="row-game-score">{game.away.score}</b> : <small>{game.away.record}</small>}</div>
       <div><TeamMark team={game.home} /><span>{game.home.rank && <b>#{game.home.rank} </b>}{game.home.name} <em>HOME</em></span>{game.state !== 'pre' ? <b key={game.home.score} className="row-game-score">{game.home.score}</b> : <small>{game.home.record}</small>}</div>
     </div>
-    <div className="game-context"><span>{game.margin}</span><small>{game.venue}</small></div>
+    <div className={`game-context ${game.state === 'in' && game.espnWinProbability ? 'live-projection' : ''}`}>{game.state === 'in' && game.espnWinProbability ? <><span>ESPN LIVE WIN %</span><strong>{game.away.short} {game.espnWinProbability.away}%</strong><strong>{game.home.short} {game.espnWinProbability.home}%</strong></> : <><span>{game.margin}</span><small>{game.venue}</small></>}</div>
     <div className={`mini-score ${game.state === 'in' ? 'live-score' : ''}`}><strong>{game.state === 'in' ? game.liveRankScore ?? game.liveExcitement : game.watchability}</strong><span>{game.state === 'in' ? 'LIVE RANK' : 'WATCH'}</span></div><div className="mini-score crowd"><strong>{game.crowd}</strong><span>CROWD</span></div>
   </article>;
 }
@@ -132,6 +134,18 @@ function GameDetails({ game, open, onOpenChange, date }: { game: Game | null; op
   }, [game, open, date]);
   if (!game) return null;
   const breakdown = game.breakdown ?? { competitiveness: 0, crowd: Math.round(game.crowd * .25), matchupQuality: 0, stakes: 0, nationalSignificance: 0 };
+  const displayedEspnProbability: ProbabilityResult | undefined = game.state === 'in' && game.espnWinProbability
+    ? {
+        provider: 'ESPN',
+        available: true,
+        marketTitle: 'ESPN Live Win Probability',
+        asOf: game.espnWinProbability.asOf,
+        outcomes: [
+          { teamId: game.away.id, team: game.away.name, probability: game.espnWinProbability.away },
+          { teamId: game.home.id, team: game.home.name, probability: game.espnWinProbability.home },
+        ],
+      }
+    : espnProbability ?? undefined;
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="game-detail-dialog">
     <DialogHeader><DialogTitle>Game details</DialogTitle><DialogDescription>{game.away.name} at {game.home.name} · complete matchup snapshot</DialogDescription></DialogHeader>
     <div className="detail-hero">
@@ -146,7 +160,7 @@ function GameDetails({ game, open, onOpenChange, date }: { game: Game | null; op
     <section className="detail-section"><div className="detail-section-title"><h3>Watchability breakdown</h3><span>{game.watchability}/100</span></div><div className="breakdown-grid">
       {[['Matchup quality', breakdown.matchupQuality, 50], ['Competitiveness', breakdown.competitiveness, 22], ['Rivalry & stakes', breakdown.stakes, 15], ['Crowd atmosphere', breakdown.crowd, 8], ['National significance', breakdown.nationalSignificance, 5]].map(([label, value, max]) => <div key={String(label)}><span>{label}</span><b>{value}/{max}</b><i><em style={{ width: `${Math.min(100, (Number(value) / Number(max)) * 100)}%` }} /></i></div>)}
     </div></section>
-    <section className="detail-section market-section"><div className="detail-section-title"><div><h3>Win probabilities</h3><p>ESPN&apos;s matchup projection alongside a verified Kalshi game market.</p></div></div><div className="market-grid"><ProbabilityCard result={espnProbability ?? undefined} teams={[game.away, game.home]} /><ProbabilityCard result={markets?.kalshi} teams={[game.away, game.home]} /></div><p className="market-disclaimer">{markets?.disclaimer ?? 'ESPN projections and market prices can change. Kalshi data is informational, not betting or financial advice.'}</p></section>
+    <section className="detail-section market-section"><div className="detail-section-title"><div><h3>Win probabilities</h3><p>{game.state === 'in' ? 'ESPN live win probability, refreshed with the score feed.' : 'ESPN\'s matchup projection alongside a verified Kalshi game market.'}</p></div></div><div className="market-grid"><ProbabilityCard result={displayedEspnProbability} teams={[game.away, game.home]} /><ProbabilityCard result={markets?.kalshi} teams={[game.away, game.home]} /></div><p className="market-disclaimer">{markets?.disclaimer ?? 'ESPN projections and market prices can change. Kalshi data is informational, not betting or financial advice.'}</p></section>
   </DialogContent></Dialog>;
 }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { loadEspnProbability } from '@/lib/espn-probability';
 import { matchupQualityGuardrail, matchupQualityIndex, normalizeTeamName, ratingLabel, type TeamRating } from '@/lib/team-quality';
 
 const NCAA_DATA = 'https://ncaa-api.henrygd.me/rankings/basketball-men/d1/ncaa-mens-basketball-net-rankings';
@@ -177,7 +178,7 @@ export async function GET(request: NextRequest) {
       return { ...netRatings.get(key), kenPomRank: kenPomRatings.get(key) };
     };
 
-    const games = (payload.events ?? []).map((event: any) => {
+    const games = (await Promise.all((payload.events ?? []).map(async (event: any) => {
       const competition = event.competitions?.[0] ?? {};
       const competitors = (competition.competitors ?? []) as EspnCompetitor[];
       const home = competitors.find((team) => team.homeAway === 'home');
@@ -284,6 +285,19 @@ export async function GET(request: NextRequest) {
       const liveRankScore = state === 'in' && liveExcitement !== undefined
         ? Math.round(clamp(liveExcitement * 0.65 + watchability * 0.35, 0, 99))
         : undefined;
+      let espnWinProbability;
+      if (state === 'in') {
+        try {
+          const probability = await loadEspnProbability(String(event.id));
+          if (probability.available) {
+            const awayOutcome = probability.outcomes?.find((outcome) => outcome.teamId === away.team.id || outcome.team === away.team.shortDisplayName);
+            const homeOutcome = probability.outcomes?.find((outcome) => outcome.teamId === home.team.id || outcome.team === home.team.shortDisplayName);
+            if (awayOutcome && homeOutcome) {
+              espnWinProbability = { away: awayOutcome.probability, home: homeOutcome.probability, asOf: probability.asOf };
+            }
+          }
+        } catch {}
+      }
       const liveFactors = state === 'in' ? [
         margin <= 3 ? 'one-possession game' : margin <= 8 ? 'close game' : null,
         period >= 3 ? 'overtime' : period === 2 && clockSeconds <= 300 ? 'late second half' : period === 2 ? 'second half' : 'first half',
@@ -324,7 +338,7 @@ export async function GET(request: NextRequest) {
         city: [competition.venue?.address?.city, competition.venue?.address?.state].filter(Boolean).join(', ') || 'Location TBD',
         watchability,
         crowd: crowdScore,
-        margin: state === 'pre' ? 'Projection pending' : event.status?.type?.shortDetail || event.status?.type?.detail || '',
+        margin: state === 'pre' ? oddsText || 'Pregame matchup' : event.status?.type?.shortDetail || event.status?.type?.detail || '',
         tags,
         conference: 'NCAA Division I',
         state,
@@ -332,6 +346,7 @@ export async function GET(request: NextRequest) {
         liveExcitement,
         liveRankScore,
         liveFactors,
+        espnWinProbability,
         neutralSite: Boolean(competition.neutralSite),
         crowdConfidence,
         crowdFactors: [
@@ -346,7 +361,7 @@ export async function GET(request: NextRequest) {
         rankingReasons,
         breakdown: { competitiveness: Math.round(competitiveness), crowd: Math.round(crowdContribution), matchupQuality: Math.round(matchupQuality), stakes: Math.round(stakes), nationalSignificance },
       };
-    }).filter(Boolean);
+    }))).filter(Boolean);
 
     const baseOrder = [...games].sort((a: any, b: any) =>
       b.watchability - a.watchability

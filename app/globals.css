@@ -112,6 +112,14 @@ button, input { font: inherit; } a { color: inherit; text-decoration: none; }
 .row-game-score { color: #2d3732; font-size: 21px; font-variant-numeric: tabular-nums; text-align: right; animation: score-pop .45s ease-out; }
 .game-row.is-live .row-game-score { color: #7f1725; font-size: 24px; }
 .game-context span, .game-context small { display: block; } .game-context span { font-size: 10px; font-weight: 650; } .game-context small { font-size: 9px; color: #87918c; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.game-context.live-projection { padding: 5px 7px; border: 1px solid #efc6b8; border-radius: 7px; background: #fff3ed; }
+.game-context.live-projection span { color: #b63d27; font-size: 7px; font-weight: 900; letter-spacing: .04em; }
+.game-context.live-projection strong { display: block; margin-top: 3px; color: #5c1925; font-size: 9px; font-variant-numeric: tabular-nums; }
+.featured-live-projection { grid-column: 1/-1; display: grid; grid-template-columns: auto auto minmax(110px,1fr) auto; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid #efc6b8; border-radius: 8px; background: #fff3ed; color: #5c1925; }
+.featured-live-projection > span { color: #b63d27; font-size: 8px; font-weight: 900; letter-spacing: .05em; }
+.featured-live-projection > strong { font-size: 10px; white-space: nowrap; }
+.featured-live-projection > i { height: 7px; overflow: hidden; border-radius: 99px; background: #d9dedb; }
+.featured-live-projection > i > em { display: block; height: 100%; background: linear-gradient(90deg, #72001f, #ff7a00); }
 .mini-score { text-align: center; } .mini-score strong { display: block; font-size: 16px; color: #d75712; } .mini-score span { font-size: 7px; color: #8d9691; font-weight: 800; } .mini-score.crowd strong { color: #820027; }
 .empty-state { padding: 80px 20px; text-align: center; background: white; border: 1px solid var(--border); border-radius: 12px; color: #7a857f; } .empty-state h3 { color: #27342e; margin-bottom: 5px; } .empty-state p { font-size: 12px; }
 .schedule-state { padding: 72px 20px; text-align: center; border: 1px solid var(--border); border-radius: 12px; background: white; color: #7a857f; } .schedule-state h3 { color: #392129; margin: 10px 0 4px; } .schedule-state p { font-size: 11px; margin: 0 0 12px; } .schedule-state .spin { animation: spin 1s linear infinite; color: #8a0d2e; } @keyframes spin { to { transform: rotate(360deg); } }
